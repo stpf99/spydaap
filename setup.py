@@ -1,16 +1,13 @@
 from setuptools import setup
 import platform
 
-reqs = ["mutagen>=1.2"]
-# use avahi if available
-try:
-    import avahi
-except ImportError:
-    reqs.append("pybonjour>=1.1")
+reqs = ["mutagen>=1.45"]
+# use zeroconf instead of pybonjour for Python 3
+reqs.append("zeroconf>=0.38.0")
 
 setup(
     name="spydaap",
-    version="0.1dev",
+    version="0.2dev",
     author="Erik Hetzner",
     author_email="egh@e6h.org",
     description="A simple DAAP server",
@@ -21,7 +18,7 @@ setup(
 
 Spydaap is a media server supporting the DAAP protocol (aka iTunes
 sharing). It is written in Python, uses the mutagen media metadata
-library, and either the Avahi or pybonjour Zeroconf implementation.
+library, and the zeroconf implementation for service discovery.
 
 Features:
 
@@ -30,18 +27,35 @@ Features:
  - Supports "smart" playlists written in Python.
  - Written in 100 percent Python and easily modifiable.
  - Caches almost everything for fast performance.
- - Embeddable.""",
+ - Embeddable.
+ 
+Python 3 Support:
+
+ - Compatible with Python 3.8+
+ - Uses zeroconf instead of pybonjour
+ - Full unicode support""",
     url="http://launchpad.net/spydaap/",
     install_requires=reqs,
+    python_requires='>=3.8',
     entry_points={
         'console_scripts': [
             'spydaap=spydaap.cli:main'
         ]
     },
     packages=["spydaap", "spydaap.parser"],
-    classifiers=["Development Status :: 4 - Beta",
-                 "License :: OSI Approved :: GNU General Public License (GPL)",
-                 "Programming Language :: Python",
-                 "Topic :: Multimedia :: Sound/Audio",
-                 "Operating System :: POSIX",
-                 "Intended Audience :: End Users/Desktop"])
+    classifiers=[
+        "Development Status :: 4 - Beta",
+        "License :: OSI Approved :: GNU General Public License (GPL)",
+        "Programming Language :: Python",
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
+        "Programming Language :: Python :: 3.13",
+        "Topic :: Multimedia :: Sound/Audio",
+        "Operating System :: POSIX",
+        "Intended Audience :: End Users/Desktop"
+    ]
+)
