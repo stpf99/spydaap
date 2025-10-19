@@ -18,8 +18,8 @@ Requirements
 ------------
 
 1. Python 3.8 or later
-2. `mutagen <http://code.google.com/p/mutagen/>`_
-3. `pybonjour <http://code.google.com/p/pybonjour/>`_ or python-avahi
+2. `mutagen `_
+3. `zeroconf`
 
 
 Running without installing
