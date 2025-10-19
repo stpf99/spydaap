@@ -45,27 +45,41 @@ class ContainerCache(spydaap.cache.OrderedCache):
             d = do('daap.playlistsongs',
                    [do('dmap.status', 200),
                     do('dmap.updatetype', 0),
-                    do('dmap.specifiedtotalcount', len(entries)),
+                    do('dmap.specifiedtotalcount', len(entries)),    
                     do('dmap.returnedcount', len(entries)),
                     do('dmap.listing',
                         [build_do(md, id) for (id, md) in enumerate(entries)])
                     ])
             ContainerCacheItem.write_entry(self.dir, pl.name, d, len(entries))
-            pid_list.append(md5(pl.name).hexdigest())
-        self.build_index(pid_list)
 
+            pid_list.append(md5(pl.name.encode('utf-8')).hexdigest())
+        self.build_index(pid_list)
 
 class ContainerCacheItem(spydaap.cache.OrderedCacheItem):
 
     @classmethod
-    def write_entry(self, dir, name, d, length):
+    def write_entry(cls, dir, name, d, length):
         data = struct.pack('!i', length)
-        data = data + struct.pack('!i%ss' % len(name), len(name), name)
-        data = data + d.encode()
-        cachefn = os.path.join(dir, md5(name).hexdigest())
-        f = open(cachefn, 'w')
-        f.write(data)
-        f.close()
+
+        if isinstance(name, str):
+            name_bytes = name.encode('utf-8')
+        else:
+            name_bytes = name
+    
+        # 使用bytes对象进行pack
+        data = data + struct.pack('!i%ss' % len(name_bytes), len(name_bytes), name_bytes)
+
+        if isinstance(d, str):
+            d_bytes = d.encode('utf-8')
+        else:
+            d_bytes = d.encode() if hasattr(d, 'encode') else d
+    
+        data = data + d_bytes
+
+        cachefn = os.path.join(dir, md5(name_bytes).hexdigest())
+
+        with open(cachefn, 'wb') as f:
+            f.write(data)
 
     def __init__(self, cache, pid, id):
         super(ContainerCacheItem, self).__init__(cache, pid, id)
@@ -74,7 +88,7 @@ class ContainerCacheItem(spydaap.cache.OrderedCacheItem):
         self._len = None
 
     def read(self):
-        f = open(self.path)
+        f = open(self.path, 'rb')
         self._len = struct.unpack('!i', f.read(4))[0]
         name_len = struct.unpack('!i', f.read(4))[0]
         self.name = f.read(name_len)

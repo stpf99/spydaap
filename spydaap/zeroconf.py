@@ -1,9 +1,8 @@
-# adopted from http://stackp.online.fr/?p=35
+# Modern zeroconf implementation for Python 3
+# Replaces pybonjour which is not Python 3 compatible
 
 __all__ = ["Zeroconf"]
 
-import select
-import sys
 import logging
 
 logger = logging.getLogger(__name__)
@@ -11,99 +10,74 @@ logger = logging.getLogger(__name__)
 
 class Zeroconf(object):
     """A simple class to publish a network service with zeroconf using
-    avahi or pybonjour, preferring pybonjour.
+    the modern zeroconf library (Python 3 compatible).
     """
 
-    class Helper(object):
-
-        def __init__(self, name, port, **kwargs):
-            self.name = name
-            self.port = port
-            self.stype = kwargs.get('stype', "_http._tcp")
-            self.domain = kwargs.get('domain', '')
-            self.host = kwargs.get('host', '')
-            self.text = kwargs.get('text', '')
-
-    class Pybonjour(Helper):
-
-        def publish(self):
-            import pybonjour
-            # records as in mt-daapd
-            txtRecord = pybonjour.TXTRecord()
-            txtRecord['txtvers'] = '1'
-            txtRecord['iTSh Version'] = '131073'  # '196609'
-            txtRecord['Machine Name'] = self.name
-            txtRecord['Password'] = '0'  # 'False' ?
-            # txtRecord['Database ID']        = '' # 16 hex digits
-            #txtRecord['Version']            = '196616'
-            # txtRecord['iTSh Version']       =
-            # txtRecord['Machine ID']         = '' # 12 hex digits
-            #txtRecord['Media Kinds Shared'] = '0'
-            # txtRecord['OSsi']               = '0x1F6' #?
-            # txtRecord['MID']                = '0x3AA6175DD7155BA7', = database id - 2 ?
-            #txtRecord['dmv']                = '131077'
-
-            def register_callback(sdRef, flags, errorCode, name, regtype, domain):
-                pass
-
-            self.sdRef = pybonjour.DNSServiceRegister(name=self.name,
-                                                      regtype="_daap._tcp",
-                                                      port=self.port,
-                                                      callBack=register_callback,
-                                                      txtRecord=txtRecord)
-
-            while True:
-                ready = select.select([self.sdRef], [], [])
-                if self.sdRef in ready[0]:
-                    pybonjour.DNSServiceProcessResult(self.sdRef)
-                    break
-
-        def unpublish(self):
-            self.sdRef.close()
-
-    class Avahi(Helper):
-
-        def publish(self):
-            import dbus
-            import avahi
-            bus = dbus.SystemBus()
-            server = dbus.Interface(
-                bus.get_object(
-                    avahi.DBUS_NAME,
-                    avahi.DBUS_PATH_SERVER),
-                avahi.DBUS_INTERFACE_SERVER)
-
-            self.group = dbus.Interface(
-                bus.get_object(avahi.DBUS_NAME,
-                               server.EntryGroupNew()),
-                avahi.DBUS_INTERFACE_ENTRY_GROUP)
-
-            self.group.AddService(avahi.IF_UNSPEC, avahi.PROTO_UNSPEC, dbus.UInt32(0),
-                                  self.name, self.stype, self.domain, self.host,
-                                  dbus.UInt16(self.port), self.text)
-            self.group.Commit()
-
-        def unpublish(self):
-            self.group.Reset()
-
-    def __init__(self, *args, **kwargs):
-        try:
-            import pybonjour
-            self.helper = Zeroconf.Pybonjour(*args, **kwargs)
-        except ImportError:
-            logger.info('pybonjour not found, using avahi')
-            try:
-                import avahi
-                import dbus
-                self.helper = Zeroconf.Avahi(*args, **kwargs)
-            except ImportError:
-                logger.warning('pybonjour nor avahi found, cannot announce presence')
-                self.helper = None
+    def __init__(self, name, port, **kwargs):
+        self.name = name
+        self.port = port
+        self.stype = kwargs.get('stype', "_http._tcp.local.")
+        self.server = None
+        self.info = None
+        
+        # Make sure stype ends with .local.
+        if not self.stype.endswith('.local.'):
+            if self.stype.endswith('.'):
+                self.stype = self.stype[:-1] + '.local.'
+            else:
+                self.stype = self.stype + '.local.'
 
     def publish(self):
-        if self.helper is not None:
-            self.helper.publish()
+        try:
+            from zeroconf import ServiceInfo, Zeroconf as ZC
+            import socket
+            
+            # Get local IP address
+            hostname = socket.gethostname()
+            local_ip = socket.gethostbyname(hostname)
+            
+            # Create TXT record for DAAP
+            txt_record = {
+                'txtvers': '1',
+                'iTSh Version': '131073',
+                'Machine Name': self.name,
+                'Password': '0',
+            }
+            
+            # Convert IP to bytes
+            ip_bytes = socket.inet_aton(local_ip)
+            
+            # Create service info
+            service_name = f"{self.name}.{self.stype}"
+            
+            self.info = ServiceInfo(
+                self.stype,
+                service_name,
+                port=self.port,
+                properties=txt_record,
+                addresses=[ip_bytes],
+                server=f"{hostname}.local."
+            )
+            
+            # Create and register service
+            self.server = ZC()
+            self.server.register_service(self.info)
+            
+            logger.info(f'Published DAAP service: {service_name} on port {self.port}')
+            
+        except ImportError:
+            logger.warning('zeroconf library not found, cannot announce presence')
+            logger.warning('Install with: pip install zeroconf')
+            self.server = None
+        except Exception as e:
+            logger.error(f'Failed to publish zeroconf service: {e}')
+            self.server = None
 
     def unpublish(self):
-        if self.helper is not None:
-            self.helper.unpublish()
+        if self.server is not None and self.info is not None:
+            try:
+                self.server.unregister_service(self.info)
+                self.server.close()
+                logger.info('Unpublished DAAP service')
+            except Exception as e:
+                logger.error(f'Failed to unpublish zeroconf service: {e}')

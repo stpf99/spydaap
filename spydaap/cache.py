@@ -26,13 +26,18 @@ class Cache(object):
             os.mkdir(self.dir)
 
     def get(self, id, func):
+        # Convert string to bytes for MD5 hashing
+        if isinstance(id, str):
+            id = id.encode('utf-8')
         id = md5(id).hexdigest()
         fn = os.path.join(self.dir, id)
         if (not(os.path.exists(fn))):
-            f = open(fn, 'w')
+            # Use binary mode for writing
+            f = open(fn, 'wb')
             func(f)
             f.close()
-        return open(fn)
+        # Return file opened in binary mode
+        return open(fn, 'rb')
 
     def clean(self):
         for f in os.listdir(self.dir):
@@ -52,11 +57,15 @@ class OrderedCache(object):
         def __iter__(self):
             return self
 
-        def next(self):
+        def __next__(self):
             if self.n >= len(self.cache):
                 raise StopIteration
             self.n = self.n + 1
             return self.cache.get_item_by_id(self.n)
+        
+        # Python 2 compatibility
+        def next(self):
+            return self.__next__()
 
     def __init__(self, dir):
         self.dir = os.path.abspath(dir)
@@ -67,14 +76,18 @@ class OrderedCache(object):
         return OrderedCache.Iter(self)
 
     def get_item_by_id(self, id):
-        fi = open(os.path.join(self.dir, 'index'), 'r')
+        # Use binary mode for reading
+        fi = open(os.path.join(self.dir, 'index'), 'rb')
         fi.seek((int(id) - 1) * 32)
         cfn = fi.read(32)
         fi.close()
-        return self.get_item_by_pid(cfn, id)
+        # KLUCZOWA POPRAWKA: Zdekoduj bajty na string przed użyciem w ścieżce
+        cfn_str = cfn.rstrip(b'\0').decode('utf-8')
+        return self.get_item_by_pid(cfn_str, id)
 
     def __len__(self):
-        return os.path.getsize(os.path.join(self.dir, 'index')) / 32
+        # Use integer division
+        return os.path.getsize(os.path.join(self.dir, 'index')) // 32
 
     def build_index(self, pid_list=None):
         index_fn = os.path.join(self.dir, 'index')
@@ -82,8 +95,12 @@ class OrderedCache(object):
             os.remove(index_fn)
         if pid_list is None:
             pid_list = sorted([f for f in os.listdir(self.dir) if f != "index"])
-        fi = open(index_fn, 'w')
+        # Use binary mode for writing
+        fi = open(index_fn, 'wb')
         for pid in pid_list:
+            # Ensure pid is bytes
+            if isinstance(pid, str):
+                pid = pid.encode('utf-8')
             fi.write(pid)
         fi.close()
 
@@ -100,6 +117,7 @@ class OrderedCacheItem(object):
         self.cache = cache
         self.pid = pid
         self.id = id
+        # Teraz pid jest stringiem, więc os.path.join zadziała poprawnie
         self.path = os.path.join(self.cache.dir, pid)
 
     def get_mtime(self):

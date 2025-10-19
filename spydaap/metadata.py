@@ -17,7 +17,7 @@ from hashlib import md5
 import os
 import struct
 import spydaap.cache
-import StringIO
+import io
 from spydaap.daap import do
 
 
@@ -30,14 +30,16 @@ class MetadataCache(spydaap.cache.OrderedCache):
     def get_item_by_pid(self, pid, n=None):
         return MetadataCacheItem(self, pid, n)
 
-    def build(self, dir, marked={}, link=False):
+    def build(self, dir, marked=None, link=False):
+        if marked is None:
+            marked = {}
         for path, dirs, files in os.walk(dir):
             for d in dirs:
                 if os.path.islink(os.path.join(path, d)):
                     self.build(os.path.join(path, d), marked, True)
             for fn in files:
                 ffn = os.path.join(path, fn)
-                digest = md5(ffn).hexdigest()
+                digest = md5(ffn.encode('utf-8')).hexdigest()
                 marked[digest] = True
                 md = self.get_item_by_pid(digest)
                 if (not(md.get_exists()) or
@@ -49,7 +51,8 @@ class MetadataCache(spydaap.cache.OrderedCache):
                                 if m is not None:
                                     MetadataCacheItem.write_entry(self.dir,
                                                                   name, ffn, m)
-                            except:
+                            except Exception as e:
+                                print(f"Error parsing {ffn}: {e}")
                                 pass
         if not(link):
             for item in os.listdir(self.dir):
@@ -61,14 +64,13 @@ class MetadataCache(spydaap.cache.OrderedCache):
 class MetadataCacheItem(spydaap.cache.OrderedCacheItem):
 
     @classmethod
-    def write_entry(self, dir, name, fn, daap):
-        if isinstance(name, unicode):
-            name = name.encode('utf-8')
-        data = "".join([d.encode() for d in daap])
-        data = struct.pack('!i%ss' % len(name), len(name), name) + data
-        data = struct.pack('!i%ss' % len(fn), len(fn), fn) + data
-        cachefn = os.path.join(dir, md5(fn).hexdigest())
-        f = open(cachefn, 'w')
+    def write_entry(cls, dir, name, fn, daap):
+        if isinstance(fn, str):
+            fn_bytes = fn.encode('utf-8')
+        else:
+            fn_bytes = fn
+        cachefn = os.path.join(dir, md5(fn_bytes).hexdigest())
+        f = open(cachefn, 'wb')
         f.write(data)
         f.close()
 
@@ -82,17 +84,20 @@ class MetadataCacheItem(spydaap.cache.OrderedCacheItem):
         self.md = None
 
     def __getitem__(self, k):
-        return self.md[k]
+        return self.get_md()[k]
+
+    def __contains__(self, k):
+        return k in self.get_md()
 
     def has_key(self, k):
         return k in self.get_md()
 
     def read(self):
-        f = open(self.path)
+        f = open(self.path, 'rb')
         fn_len = struct.unpack('!i', f.read(4))[0]
-        self.original_filename = f.read(fn_len)
+        self.original_filename = f.read(fn_len).decode('utf-8')
         name_len = struct.unpack('!i', f.read(4))[0]
-        self.name = f.read(name_len)
+        self.name = f.read(name_len).decode('utf-8')
         self.daap_raw = f.read()
         f.close()
 
@@ -114,7 +119,7 @@ class MetadataCacheItem(spydaap.cache.OrderedCacheItem):
     def get_md(self):
         if self.md is None:
             self.md = {}
-            s = StringIO.StringIO(self.get_dmap_raw())
+            s = io.BytesIO(self.get_dmap_raw())
             l = len(self.get_dmap_raw())
             data = []
             while s.tell() != l:

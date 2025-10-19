@@ -58,7 +58,6 @@ def DAAPParseCodeTypes(treeroot):
                     dtype = dmapFudgeDataTypes[name]
                 except KeyError:
                     pass
-                #print("** %s %s %s", code, name, dtype)
                 dmapCodeTypes[code] = (name, dtype)
         else:
             raise DAAPError('DAAPParseCodeTypes: unexpected code %s at level 1' % info.codeName())
@@ -129,10 +128,10 @@ class DAAPObject(object):
             # our object is a container,
             # this means we're going to have to
             # check contains[]
-            value = ''
+            value = b''
             for item in self.contains:
                 # get the data stream from each of the sub elements
-                if isinstance(item, str):
+                if isinstance(item, bytes):
                     # preencoded
                     value += item
                 else:
@@ -140,7 +139,8 @@ class DAAPObject(object):
             # get the length of the data
             length = len(value)
             # pack: 4 byte code, 4 byte length, length bytes of value
-            data = struct.pack('!4sI%ss' % length, self.code, length, value)
+            code_bytes = self.code.encode('ascii') if isinstance(self.code, str) else self.code
+            data = struct.pack('!4sI%ss' % length, code_bytes, length, value)
             return data
         else:
             # we don't have to traverse anything
@@ -151,7 +151,7 @@ class DAAPObject(object):
             if isinstance(value, float):
                 value = int(value)
             if self.type == 'v':
-                value = value.split('.')
+                value = str(value).split('.')
                 value = struct.pack('!HH', int(value[0]), int(value[1]))
                 packing = "4s"
             elif self.type == 'l':
@@ -159,8 +159,10 @@ class DAAPObject(object):
             elif self.type == 'ul':
                 packing = 'Q'
             elif self.type == 'i':
-                if (isinstance(value, str) and len(value) <= 4):
+                if (isinstance(value, (bytes, str)) and len(value) <= 4):
                     packing = '4s'
+                    if isinstance(value, str):
+                        value = value.encode('ascii')
                 else:
                     packing = 'i'
             elif self.type == 'ui':
@@ -180,7 +182,7 @@ class DAAPObject(object):
             elif self.type == 't':
                 packing = 'I'
             elif self.type == 's':
-                if isinstance(value, unicode):
+                if isinstance(value, str):
                     value = value.encode('utf-8')
                 packing = '%ss' % len(value)
             else:
@@ -189,7 +191,8 @@ class DAAPObject(object):
             # calculate the length of what we're packing
             length = struct.calcsize('!%s' % packing)
             # pack: 4 characters for the code, 4 bytes for the length, and 'length' bytes for the value
-            data = struct.pack('!4sI%s' % (packing), self.code, length, value)
+            code_bytes = self.code.encode('ascii') if isinstance(self.code, str) else self.code
+            data = struct.pack('!4sI%s' % (packing), code_bytes, length, value)
             return data
 
     def processData(self, str):
@@ -199,6 +202,10 @@ class DAAPObject(object):
         if not data:
             return
         self.code, self.length = struct.unpack('!4sI', data)
+        
+        # Decode code if it's bytes
+        if isinstance(self.code, bytes):
+            self.code = self.code.decode('ascii')
 
         # now we need to find out what type of object it is
         if self.code is None or self.code not in dmapCodeTypes:
@@ -255,16 +262,17 @@ class DAAPObject(object):
             # the object is a string
             # we need to read length characters from the string
             try:
-                self.value = unicode(
-                    struct.unpack('!%ss' % self.length, code)[0], 'utf-8')
+                self.value = struct.unpack('!%ss' % self.length, code)[0].decode('utf-8')
             except UnicodeDecodeError:
                 # oh, urgh
-                self.value = unicode(
-                    struct.unpack('!%ss' % self.length, code)[0], 'latin-1')
+                try:
+                    self.value = struct.unpack('!%ss' % self.length, code)[0].decode('latin-1')
+                except:
+                    self.value = struct.unpack('!%ss' % self.length, code)[0].decode('utf-8', errors='replace')
         else:
             # we don't know what to do with this object
             # put it's raw data into value
-            log.debug('DAAPObject: Unknown code %s for type %s, writing raw data', code, self.code)
+            log.debug('DAAPObject: Unknown code %s for type %s, writing raw data', self.code, code)
             self.value = code
 
 do = DAAPObject

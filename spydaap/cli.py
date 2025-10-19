@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # Copyright (C) 2008 Erik Hetzner
 
 # This file is part of Spydaap. Spydaap is free software: you can
@@ -15,9 +15,8 @@
 # along with Spydaap. If not, see <http://www.gnu.org/licenses/>.
 
 import optparse
-
-import BaseHTTPServer
-import SocketServer
+import http.server as BaseHTTPServer
+import socketserver as SocketServer
 import grp
 import os
 import pwd
@@ -26,18 +25,17 @@ import signal
 import spydaap
 import sys
 import socket
-# import httplib, logging
 import spydaap.daap
 import spydaap.metadata
 import spydaap.containers
 import spydaap.cache
 import spydaap.server
 import spydaap.zeroconf
-#from spydaap.daap import do
 
 config_file = os.path.join(spydaap.spydaap_dir, "config.py")
 if os.path.isfile(config_file):
-    execfile(config_file)
+    with open(config_file) as f:
+        exec(compile(f.read(), config_file, 'exec'))
 
 cache = spydaap.cache.Cache(spydaap.cache_dir)
 md_cache = spydaap.metadata.MetadataCache(os.path.join(spydaap.cache_dir, "media"), spydaap.parsers)
@@ -62,6 +60,10 @@ class Log(object):
             self.stdout.write(s)
             self.stdout.flush()
 
+    def flush(self):
+        self.f.flush()
+        if not self.quiet:
+            self.stdout.flush()
 
 class MyThreadedHTTPServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
     """Handle requests in a separate thread."""
@@ -92,8 +94,6 @@ def make_shutdown(httpd):
         httpd.force_stop()
     return _shutdown
 
-# invalid default pid ; prevents killing something unintended
-
 
 def really_main(opts, parent_pid=99999999999999):
     rebuild_cache()
@@ -108,9 +108,8 @@ def really_main(opts, parent_pid=99999999999999):
         open(opts.pidfile, 'w').write("%d" % parent_pid)
     except socket.error:
         if not opts.daemonize:
-            print "Another DAAP server is already running. Exiting."
-
-        sys.exit(0)  # silently exit; another instance is already running
+            print("Another DAAP server is already running. Exiting.")
+        sys.exit(0)
 
     signal.signal(signal.SIGTERM, make_shutdown(httpd))
     signal.signal(signal.SIGHUP, rebuild_cache)
@@ -175,7 +174,7 @@ def main():
     if opts.user == 0 or opts.group == 0:
         sys.stderr.write("spydaap must not run as root\n")
         sys.exit(2)
-    # ensure the that the daemon runs a normal user
+    
     os.setegid(opts.group)
     os.seteuid(opts.user)
 
@@ -183,17 +182,15 @@ def main():
         try:
             pid = int(open(opts.pidfile, 'r').read())
             os.kill(pid, signal.SIGTERM)
-            print "Daemon killed."
+            print("Daemon killed.")
         except (OSError, IOError):
-            print "Unable to kill daemon -- not running, or missing pid file?"
-
+            print("Unable to kill daemon -- not running, or missing pid file?")
         sys.exit(0)
 
     if opts.servername is not None:
         spydaap.server_name = opts.servername
 
     if len(spydaap.server_name) > 63:
-        # truncate to max valid length (63 characters)
         spydaap.server_name = spydaap.server_name[:63]
 
     if opts.folderpath is not None:
@@ -201,46 +198,38 @@ def main():
 
     if not(opts.daemonize):
         if not opts.quiet:
-            print "spydaap server started (use --help for more options).  Press Ctrl-C to exit."
-        # redirect outputs to a logfile
+            print("spydaap server started (use --help for more options).  Press Ctrl-C to exit.")
         sys.stdout = sys.stderr = Log(open(opts.logfile, 'a+'), opts.quiet)
         really_main(opts)
     else:
         if not opts.quiet:
-            print "spydaap daemon started in background."
-        # redirect outputs to a logfile
+            print("spydaap daemon started in background.")
         sys.stdout = sys.stderr = Log(open(opts.logfile, 'a+'), True)
         try:
             pid = os.fork()
             if pid > 0:
-                # exit first parent
                 sys.exit(0)
         except OSError as e:
             sys.stderr.write("fork #1 failed: %d (%s)\n" % (e.errno, e.strerror))
             sys.exit(1)
 
-        # decouple from parent environment
-        os.chdir("/")  # don't prevent unmounting....
+        os.chdir("/")
         os.setsid()
         os.umask(0)
 
-        # do second fork
         try:
             pid = os.fork()
-            # if in second parent, exit from it
             if pid > 0:
-                # store pid temporarily (don't overwrite real pidfile until we
-                # know server has successfully started)
                 open(opts.pidfile + '.tmp', 'w').write("%d" % pid)
                 parent_pid = pid
                 sys.exit(0)
         except OSError as e:
-            print >>sys.stderr, "fork #2 failed: %d (%s)" % (e.errno, e.strerror)
+            print("fork #2 failed: %d (%s)" % (e.errno, e.strerror), file=sys.stderr)
             sys.exit(1)
-        # load parent pid
+        
         parent_pid = int(open(opts.pidfile + '.tmp', 'r').read())
-
         really_main(opts, parent_pid)
+
 
 if __name__ == "__main__":
     main()

@@ -89,12 +89,23 @@ class YearRange(Playlist):
             return year >= self.first and year <= self.last
 
     def sort(self, entries):
-        def s(a, b):
-            return self.safe_cmp_series(a, b, ['daap.songyear',
-                                               'daap.songartist',
-                                               'daap.songalbum',
-                                               'daap.songtracknumber'])
-        entries.sort(cmp=s)
+        def sort_key(entry):
+            # 处理缺失的键，确保缺失的值排在最后
+            year = entry.get('daap.songyear')
+            artist = entry.get('daap.songartist')
+            album = entry.get('daap.songalbum')
+            track = entry.get('daap.songtracknumber')
+        
+            # 使用元组，第一个元素表示键是否存在(0=存在, 1=不存在)
+            # 这样可以确保有值的项排在没值的项前面
+            return (
+                (1, 0) if year is None else (0, year),
+                (1, '') if artist is None else (0, artist),
+                (1, '') if album is None else (0, album),
+                (1, 0) if track is None else (0, track)
+            )
+    
+        entries.sort(key=sort_key)
 
 
 class Recent(Playlist):

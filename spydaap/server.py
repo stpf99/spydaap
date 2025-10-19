@@ -13,12 +13,12 @@
 # You should have received a copy of the GNU General Public License
 # along with Spydaap. If not, see <http://www.gnu.org/licenses/>.
 
-import BaseHTTPServer
+import http.server as BaseHTTPServer
 import errno
 import logging
 import os
 import re
-import urlparse
+import urllib.parse as urlparse
 import socket
 import spydaap
 import sys
@@ -43,12 +43,15 @@ def makeDAAPHandlerClass(server_name, cache, md_cache, container_cache):
             self.send_header('Accept-Ranges', 'bytes')
             self.send_header('Content-Language', 'en_us')
             if 'extra_headers' in kwargs:
-                for k, v in kwargs['extra_headers'].iteritems():
+                for k, v in kwargs['extra_headers'].items():
                     self.send_header(k, v)
             try:
                 if isinstance(data, file):
                     self.send_header("Content-Length", str(os.stat(data.name).st_size))
                 else:
+                    # Ensure data is bytes
+                    if isinstance(data, str):
+                        data = data.encode('utf-8')
                     self.send_header("Content-Length", len(data))
             except Exception:
                 pass
@@ -57,14 +60,17 @@ def makeDAAPHandlerClass(server_name, cache, md_cache, container_cache):
                 pass
             else:
                 try:
-                    if (hasattr(data, 'next')):
+                    if (hasattr(data, '__next__')):
                         for d in data:
                             self.wfile.write(d)
                     else:
+                        # Ensure data is bytes
+                        if isinstance(data, str):
+                            data = data.encode('utf-8')
                         self.wfile.write(data)
-                except socket.error, (err_no, err_str):
+                except socket.error as err:
+                    err_no = err.errno if hasattr(err, 'errno') else err.args[0]
                     if err_no in [errno.ECONNRESET]:
-                        # XXX: why do we need to pass this?
                         pass
                     else:
                         raise
@@ -138,9 +144,6 @@ def makeDAAPHandlerClass(server_name, cache, md_cache, container_cache):
                        do('dmap.supportsquery', 0),
                        do('dmap.supportspersistentids', 0),
                        do('dmap.databasescount', 1),
-                       #do('dmap.supportsautologout', 0),
-                       #do('dmap.supportsupdate', 0),
-                       #do('dmap.supportsresolve', 0),
                        ])
             self.h(msrv.encode())
 
@@ -196,6 +199,7 @@ def makeDAAPHandlerClass(server_name, cache, md_cache, container_cache):
                         do('dmap.returnedcount', file_count),
                         do('dmap.listing',
                             children)])
+                # Write bytes to binary file
                 f.write(d.encode())
 
             data = cache.get('item_list', build)
@@ -219,14 +223,13 @@ def makeDAAPHandlerClass(server_name, cache, md_cache, container_cache):
                 else:
                     end = os.stat(fn).st_size
                 start = int(start)
-                f = spydaap.ContentRangeFile(fn, open(fn), start, end)
+                f = spydaap.ContentRangeFile(fn, open(fn, 'rb'), start, end)
                 extra_headers = {"Content-Range": "bytes %s-%s/%s" % (str(start), str(end), str(os.stat(fn).st_size))}
                 status = 206
             else:
-                f = open(fn)
+                f = open(fn, 'rb')
                 extra_headers = {}
                 status = 200
-            # this is ugly, very wrong.
             type = "audio/%s" % (os.path.splitext(fn)[1])
             self.h(f, type=type, status=status, extra_headers=extra_headers)
 
@@ -237,7 +240,7 @@ def makeDAAPHandlerClass(server_name, cache, md_cache, container_cache):
                      do('dmap.itemcount', len(c)),
                      do('dmap.containeritemid', i + 1),
                      do('dmap.itemname', c.get_name())]
-                if c.get_name() == 'Library':  # this should be better
+                if c.get_name() == 'Library':
                     d.append(do('daap.baseplaylist', 1))
                 else:
                     d.append(do('com.apple.itunes.smart-playlist', 1))

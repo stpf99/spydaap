@@ -14,7 +14,7 @@
 # along with Spydaap. If not, see <http://www.gnu.org/licenses/>.
 
 import os
-import playlists
+from . import playlists
 import spydaap.parser.mp3
 import spydaap.parser.ogg
 import spydaap.parser.flac
@@ -48,7 +48,7 @@ class ContentRangeFile(object):
     def __len__(self):
         return self.length
 
-    def next(self):
+    def __next__(self):
         to_read = self.chunk
         if (self.end is not None):
             if (self.read >= self.end):
@@ -60,11 +60,15 @@ class ContentRangeFile(object):
             self.read = self.read + len(retval)
         else:
             retval = self.parent.read(to_read)
-        if retval == '':
+        if retval == b'':
             self.parent.close()
             raise StopIteration
         else:
             return retval
+
+    # Python 2 compatibility
+    def next(self):
+        return self.__next__()
 
     def __iter__(self):
         return self
