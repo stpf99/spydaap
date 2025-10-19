@@ -47,7 +47,7 @@ Ubuntu/Debian
 
 ::
 
-  $ sudo apt-get install python-mutagen python-avahi
+  $ sudo apt-get install python-mutagen python-zeroconf
   $ cd spydaap
   $ sudo python setup.py install
 
