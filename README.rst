@@ -18,7 +18,7 @@ Requirements
 ------------
 
 1. Python 3.8 or later
-3. `mutagen, zeroconf`
+2. `mutagen, zeroconf`
 
 
 Running without installing
