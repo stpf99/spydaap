@@ -49,7 +49,7 @@ Ubuntu/Debian
 
   $ sudo apt-get install python-mutagen python-zeroconf
   $ cd spydaap
-  $ sudo python setup.py install
+  $ python setup.py install --user
 
 Mac OS X
 ~~~~~~~~
@@ -68,7 +68,7 @@ Running
 
 ::
 
-  $ spydaap
+  $ spydaap -f /home/user/Muzyka
 
 ``~/Music/`` is the default directory where spydaap looks for media
 files. It can be changed by editing ``~/.spydaap/config.py`` (see
