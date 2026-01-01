@@ -7,7 +7,7 @@ reqs.append("zeroconf>=0.38.0")
 
 setup(
     name="spydaap",
-    version="0.2dev",
+    version="0.2dev0",
     author="Erik Hetzner",
     author_email="egh@e6h.org",
     description="A simple DAAP server",
