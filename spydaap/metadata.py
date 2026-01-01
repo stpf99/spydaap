@@ -65,14 +65,43 @@ class MetadataCacheItem(spydaap.cache.OrderedCacheItem):
 
     @classmethod
     def write_entry(cls, dir, name, fn, daap):
+        # Encode filename to bytes
         if isinstance(fn, str):
             fn_bytes = fn.encode('utf-8')
         else:
             fn_bytes = fn
+        
+        # Encode name to bytes
+        if isinstance(name, str):
+            name_bytes = name.encode('utf-8')
+        else:
+            name_bytes = name
+        
+        # Encode daap data
+        if isinstance(daap, list):
+            # daap is a list of DAAP objects
+            daap_bytes = b''.join([d.encode() if hasattr(d, 'encode') else d for d in daap])
+        elif hasattr(daap, 'encode'):
+            daap_bytes = daap.encode()
+        else:
+            daap_bytes = daap if isinstance(daap, bytes) else str(daap).encode('utf-8')
+        
+        # Construct the data in the expected format:
+        # 4 bytes: filename length
+        # N bytes: filename
+        # 4 bytes: name length
+        # M bytes: name
+        # Rest: daap data
+        data = struct.pack('!i', len(fn_bytes))
+        data += fn_bytes
+        data += struct.pack('!i', len(name_bytes))
+        data += name_bytes
+        data += daap_bytes
+        
+        # Write to cache file
         cachefn = os.path.join(dir, md5(fn_bytes).hexdigest())
-        f = open(cachefn, 'wb')
-        f.write(data)
-        f.close()
+        with open(cachefn, 'wb') as f:
+            f.write(data)
 
     def __init__(self, cache, pid, id):
         super(MetadataCacheItem, self).__init__(cache, pid, id)
